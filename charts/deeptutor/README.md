@@ -8,6 +8,8 @@ the default single backend worker.
 
 `deploy/k3s-values.yaml` targets `quang-pc`, uses a 20 GiB `local-path` PVC,
 and enables private Tailscale HTTPS ingress. No public ingress is created.
+It references the namespace-local `registry-credentials` image pull Secret
+(copied from `hedge` for this cluster); credentials are not stored in values.
 Tailscale uses `spec.tls.hosts` for the requested device name; see the
 [operator documentation](https://tailscale.com/docs/kubernetes-operator/ingress/expose-workload-to-tailnet-l7).
 

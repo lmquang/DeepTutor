@@ -52,9 +52,8 @@ RUN npm run build
 # ============================================
 # Stage 1b: Node Runtime for Target Platform
 # ============================================
-# Provides the correctly-architected node binary for the final image.
-# Unlike frontend-builder (pinned to BUILDPLATFORM), this stage pulls
-# the node image matching each target platform (amd64 / arm64).
+# Provides the correctly-architected node binary for the final image,
+# matching each target platform (amd64 / arm64).
 FROM node:22-slim AS node-runtime
 
 # ============================================
