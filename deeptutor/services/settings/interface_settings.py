@@ -52,6 +52,8 @@ _RESPONSE_LANGUAGE_ALIASES: dict[str, str] = {
     "polish": "pl",
     "malay": "ms",
     "bahasa melayu": "ms",
+    "vietnamese": "vi",
+    "tiếng việt": "vi",
 }
 
 

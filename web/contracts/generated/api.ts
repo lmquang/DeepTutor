@@ -16458,6 +16458,7 @@ export interface components {
             | "pl"
             | "uk"
             | "ms"
+            | "vi"
           )
         | null;
       /** Sidebar Description */

@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app.kubernetes.io/name: deeptutor
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  # Local SQLite and account/workspace files have one writer.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: deeptutor
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: deeptutor
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.bootstrapSecret }}
+      initContainers:
+        - name: seed-settings
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-c"]
+          args:
+            - |
+              from pathlib import Path
+              import shutil
+              target = Path('/app/data/user/settings')
+              target.mkdir(parents=True, exist_ok=True)
+              for name in ('model_catalog.json', 'interface.json', 'system.json'):
+                  source = Path('/bootstrap') / name
+                  destination = target / name
+                  if source.is_file() and not destination.exists():
+                      shutil.copyfile(source, destination)
+                      destination.chmod(0o600)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+      {{- end }}
+      containers:
+        - name: deeptutor
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: DEEPTUTOR_HOME
+              value: /app
+            - name: DEEPTUTOR_WORKSPACE_ROOT
+              value: /app/data/user/workspace
+            - name: DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS
+              value: /app/data/user/workspace
+            - name: TZ
+              value: Asia/Ho_Chi_Minh
+          ports:
+            - name: http
+              containerPort: 3782
+            - name: backend
+              containerPort: 8001
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: backend
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=3); urllib.request.urlopen('http://127.0.0.1:3782', timeout=3)"
+            periodSeconds: 10
+            timeoutSeconds: 8
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: backend
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+        {{- if .Values.bootstrapSecret }}
+        - name: bootstrap
+          secret:
+            secretName: {{ .Values.bootstrapSecret | quote }}
+        {{- end }}

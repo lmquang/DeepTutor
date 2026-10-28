@@ -1,0 +1,30 @@
+image:
+  repository: ghcr.io/hkuds/deeptutor
+  tag: "1.6.15"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Existing Secret containing model_catalog.json, interface.json and/or
+# system.json. Files seed an empty volume; existing settings are preserved.
+bootstrapSecret: ""
+
+persistence:
+  storageClass: ""
+  size: 20Gi
+
+nodeSelector: {}
+tolerations: []
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "4"
+    memory: 6Gi
+
+ingress:
+  enabled: false
+  className: tailscale
+  hostname: deeptutor
+  annotations: {}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: deeptutor
+description: DeepTutor Web/API with persistent single-instance storage
+type: application
+version: 0.1.0
+appVersion: "1.6.15"

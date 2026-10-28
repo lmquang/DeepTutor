@@ -11,6 +11,7 @@ data/
 # Local development documents; public guides live in docs-for-user/.
 /docs/
 /design-qa.md
+/deploy/
 /site/
 .claude
 .agents/

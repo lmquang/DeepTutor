@@ -110,8 +110,7 @@ docker-compose*.yml
 # ============================================
 # User Data (will be mounted as volumes)
 # ============================================
-data/user/
-data/knowledge_bases/
+data/
 run_code_workspace/
 
 # ============================================
