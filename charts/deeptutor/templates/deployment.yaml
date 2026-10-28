@@ -42,7 +42,6 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if .Values.bootstrapSecret }}
       initContainers:
         - name: seed-settings
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -70,7 +69,6 @@ spec:
             - name: bootstrap
               mountPath: /bootstrap
               readOnly: true
-      {{- end }}
       containers:
         - name: deeptutor
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -90,9 +88,9 @@ spec:
               value: Asia/Ho_Chi_Minh
           ports:
             - name: http
-              containerPort: 3782
+              containerPort: {{ .Values.config.system.frontend_port }}
             - name: backend
-              containerPort: 8001
+              containerPort: {{ .Values.config.system.backend_port }}
           startupProbe:
             httpGet:
               path: /health/ready
@@ -104,7 +102,7 @@ spec:
               command:
                 - python
                 - -c
-                - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health/ready', timeout=3); urllib.request.urlopen('http://127.0.0.1:3782', timeout=3)"
+                - {{ printf "import urllib.request; urllib.request.urlopen('http://127.0.0.1:%v/health/ready', timeout=3); urllib.request.urlopen('http://127.0.0.1:%v', timeout=3)" .Values.config.system.backend_port .Values.config.system.frontend_port | quote }}
             periodSeconds: 10
             timeoutSeconds: 8
           livenessProbe:
@@ -123,8 +121,12 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-data
-        {{- if .Values.bootstrapSecret }}
         - name: bootstrap
-          secret:
-            secretName: {{ .Values.bootstrapSecret | quote }}
-        {{- end }}
+          projected:
+            sources:
+              - configMap:
+                  name: {{ .Release.Name }}-config
+              {{- if .Values.bootstrapSecret }}
+              - secret:
+                  name: {{ .Values.bootstrapSecret | quote }}
+              {{- end }}

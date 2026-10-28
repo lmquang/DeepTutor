@@ -28,8 +28,10 @@ docker push registry.chartify.xyz/deeptutor:vi-20261028
 
 ## Configure and install
 
-The initial settings Secret is created separately so credentials never enter
-Helm values, chart archives, or the image. These commands seed only settings,
+Non-secret system/interface defaults are rendered into a ConfigMap from
+`config.system` and `config.interface` in Helm values. The credential-bearing
+model catalog Secret is created separately so API keys never enter Helm
+values, chart archives, or the image. These commands seed only settings,
 not local conversations or knowledge bases. Review provider URLs and ports
 before using settings from another installation; this chart expects 8001/3782
 and one backend worker.
@@ -37,18 +39,17 @@ and one backend worker.
 ```sh
 kubectl --context k3s create namespace deeptutor
 kubectl --context k3s -n deeptutor create secret generic deeptutor-bootstrap \
-  --from-file=model_catalog.json=data/user/settings/model_catalog.json \
-  --from-file=interface.json=data/user/settings/interface.json \
-  --from-file=system.json=data/user/settings/system.json
+  --from-file=model_catalog.json=data/user/settings/model_catalog.json
 helm lint charts/deeptutor -f deploy/k3s-values.yaml
 helm --kube-context k3s upgrade --install deeptutor charts/deeptutor \
   --namespace deeptutor -f deploy/k3s-values.yaml --wait --timeout 10m
 kubectl --context k3s -n deeptutor get pods,pvc,ingress -o wide
 ```
 
-The init container copies only missing settings files. Subsequent restarts and
-upgrades preserve edits made through the Web app. Change existing settings in
-the app; updating the bootstrap Secret does not overwrite the PVC's settings.
+The init container copies only missing settings files from the ConfigMap and
+Secret. Subsequent restarts and upgrades preserve edits made through the Web
+app. Change existing settings in the app; updating bootstrap resources does
+not overwrite the PVC's settings.
 The PVC is retained by Helm on uninstall. Back up the entire `/app/data` tree;
 local-path data stays on `quang-pc` and is not replicated across nodes.
 

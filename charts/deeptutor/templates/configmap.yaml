@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  system.json: |
+    {{- .Values.config.system | toPrettyJson | nindent 4 }}
+  interface.json: |
+    {{- .Values.config.interface | toPrettyJson | nindent 4 }}

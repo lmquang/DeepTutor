@@ -4,9 +4,19 @@ image:
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
-# Existing Secret containing model_catalog.json, interface.json and/or
-# system.json. Files seed an empty volume; existing settings are preserved.
+# Existing Secret containing model_catalog.json (includes provider credentials).
+# Bootstrap files seed an empty volume; existing settings are preserved.
 bootstrapSecret: ""
+
+config:
+  system:
+    backend_port: 8001
+    frontend_port: 3782
+    backend_workers: 1
+  interface:
+    theme: snow
+    language: en
+    response_language: en
 
 persistence:
   storageClass: ""
