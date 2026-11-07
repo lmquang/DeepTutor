@@ -467,6 +467,20 @@ class LlamaIndexPipeline:
                 self.logger.info(f"Created new index with {num_added} documents")
 
             await self._publish_verified(kb_dir, plan.storage_dir, signature, documents)
+
+            # Receipts describe only loaded sources in the published version, not
+            # every requested path (the loader may skip empty/invalid files).
+            indexed_file_callback = kwargs.get("indexed_file_callback")
+            if indexed_file_callback is not None:
+                indexed_paths: set[str] = set()
+                for document in documents:
+                    metadata = getattr(document, "metadata", None)
+                    if isinstance(metadata, dict):
+                        path = metadata.get("file_path")
+                        if isinstance(path, str) and path:
+                            indexed_paths.add(path)
+                indexed_file_callback(sorted(indexed_paths))
+
             self.logger.info(f"Successfully added documents to KB '{kb_name}'")
             return True
 

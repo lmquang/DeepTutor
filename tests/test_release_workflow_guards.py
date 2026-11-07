@@ -41,6 +41,8 @@ def _run_validator(publication: str, tag: str, tmp_path: Path) -> subprocess.Com
         [sys.executable, "-c", _validator_script(publication)],
         env={
             "RELEASE_TAG": tag,
+            "GITHUB_REPOSITORY": "lmquang/DeepTutor",
+            "GITHUB_EVENT_NAME": "release",
             "GITHUB_OUTPUT": str(output),
             "PATH": os.environ["PATH"],
         },
@@ -55,7 +57,10 @@ def test_non_version_release_tags_skip_publication(publication: str) -> None:
     document, publish_job_name = _workflow(publication)
     validator = document["jobs"]["validate-release-tag"]
 
-    assert validator["if"] == "startsWith(github.event.release.tag_name, 'v')"
+    expected = "startsWith(github.event.release.tag_name, 'v')"
+    if publication == "docker":
+        expected = "github.event_name != 'release' || " + expected
+    assert validator["if"] == expected
     assert document["jobs"][publish_job_name]["needs"] == "validate-release-tag"
 
 
@@ -100,11 +105,43 @@ def test_malformed_version_tags_fail_the_guard(publication: str, tag: str, tmp_p
     assert repr(tag) in result.stderr
 
 
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
+def test_docker_non_release_build_targets_own_registry(event, tmp_path):
+    output = tmp_path / "outputs"
+    result = subprocess.run(
+        [sys.executable, "-c", _validator_script("docker")],
+        env={
+            "GITHUB_OUTPUT": str(output),
+            "GITHUB_REPOSITORY": "lmquang/DeepTutor",
+            "GITHUB_EVENT_NAME": event,
+            "RELEASE_TAG": "",
+            "PATH": os.environ["PATH"],
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert output.read_text() == "image=ghcr.io/lmquang/deeptutor\n"
+    document, _ = _workflow("docker")
+    # PyYAML's YAML 1.1 loader interprets the Actions key `on` as True.
+    triggers = document.get("on", document.get(True))
+    assert triggers["push"]["branches"] == ["main"]
+    assert "workflow_dispatch" in triggers
+    assert document["permissions"]["packages"] == "write"
+    metadata = next(
+        step for step in document["jobs"]["build-and-push"]["steps"] if step.get("id") == "meta"
+    )["with"]
+    assert metadata["images"] == "${{ needs.validate-release-tag.outputs.image }}"
+    assert metadata["flavor"] == "latest=false"
+    assert "type=sha" in metadata["tags"]
+    assert "type=ref,event=branch" in metadata["tags"]
+
+
 def test_docker_uses_validated_tag_and_stable_latest_only(tmp_path: Path) -> None:
     result = _run_validator("docker", "v1.2.3+build.1", tmp_path)
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "docker-output.txt").read_text() == (
-        "image_tag=1.2.3-build.1\nis_stable=false\n"
+        "image=ghcr.io/lmquang/deeptutor\nimage_tag=1.2.3-build.1\nis_stable=false\n"
     )
 
     document, _ = _workflow("docker")

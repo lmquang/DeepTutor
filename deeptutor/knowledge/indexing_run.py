@@ -140,10 +140,9 @@ def visible_run(kb_dir: Path) -> dict[str, Any] | None:
     if value is None or value.get("state") in _TERMINAL:
         return value
     try:
-        alive = (
-            psutil.Process(int(value["pid"])).create_time() == value["process_started_at"]
-            if psutil is not None
-            else _lease_is_held(kb_dir)
+        alive = _lease_is_held(kb_dir) or (
+            psutil is not None
+            and psutil.Process(int(value["pid"])).create_time() == value["process_started_at"]
         )
     except Exception:
         alive = False

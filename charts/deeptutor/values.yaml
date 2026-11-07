@@ -8,6 +8,23 @@ imagePullSecrets: []
 # Bootstrap files seed an empty volume; existing settings are preserved.
 bootstrapSecret: ""
 
+# Optional existing Secret containing GITHUB_TOKEN for repository sync.
+githubSecret: ""
+
+# Heavy API indexing runs in a subprocess by default. The kubernetes backend
+# creates one namespace-scoped Job per indexing run.
+indexing:
+  backend: subprocess
+  timeoutSeconds: 21600
+  maxIsolatedWorkers: 1
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
 config:
   system:
     backend_port: 8001
@@ -27,8 +44,8 @@ tolerations: []
 
 resources:
   requests:
-    cpu: 500m
-    memory: 1Gi
+    cpu: "2"
+    memory: 2Gi
   limits:
     cpu: "4"
     memory: 6Gi

@@ -1,18 +1,37 @@
 name: Docker Release
 
-# Triggered when a GitHub Release is published.
-# Builds a multi-platform Docker image and pushes it to GitHub Container Registry (GHCR).
+# Builds the current repository into its owner's GitHub Container Registry.
+# Pushes to main publish main + sha tags; stable releases additionally publish latest.
+# Manual builds publish branch + sha tags without replacing stable latest.
 #
-# Image: ghcr.io/hkuds/deeptutor
+# Image: ghcr.io/<repository-owner>/<repository-name> (lowercase)
 # Tags:
 #   - Version tag stripped of 'v' prefix (e.g. release v1.2.3 → image tag 1.2.3)
-#   - latest (always points to the most recently published release)
+#   - latest (stable releases only)
+#   - main / branch name and sha-<full commit> (push/manual builds)
 #
 # Platforms: linux/amd64, linux/arm64
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - deeptutor/**
+      - deeptutor_cli/**
+      - web/**
+      - requirements/**
+      - requirements.txt
+      - pyproject.toml
+      - Dockerfile
+      - .dockerignore
+      - .github/workflows/docker-release.yml
+  workflow_dispatch:
   release:
     types: [published]
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -21,11 +40,12 @@ permissions:
 jobs:
   validate-release-tag:
     name: Validate release tag
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.validate.outputs.image_tag }}
       is_stable: ${{ steps.validate.outputs.is_stable }}
+      image: ${{ steps.validate.outputs.image }}
     steps:
       - name: Require an image version tag
         id: validate
@@ -34,6 +54,10 @@ jobs:
           import os
           import re
 
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"image=ghcr.io/{os.environ['GITHUB_REPOSITORY'].lower()}\n")
+          if os.environ["GITHUB_EVENT_NAME"] != "release":
+              raise SystemExit(0)
           tag = os.environ["RELEASE_TAG"]
           pattern = (
               r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -89,10 +113,13 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/hkuds/deeptutor
+          images: ${{ needs.validate-release-tag.outputs.image }}
+          flavor: latest=false
           tags: |
-            type=raw,value=${{ needs.validate-release-tag.outputs.image_tag }}
-            type=raw,value=latest,enable=${{ github.event.release.prerelease == false && needs.validate-release-tag.outputs.is_stable == 'true' }}
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=long
+            type=raw,value=${{ needs.validate-release-tag.outputs.image_tag }},enable=${{ github.event_name == 'release' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'release' && github.event.release.prerelease == false && needs.validate-release-tag.outputs.is_stable == 'true' }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

@@ -118,7 +118,7 @@ class _DispatchRecorder:
 
 def _install_dispatch_recorder(monkeypatch) -> _DispatchRecorder:
     recorder = _DispatchRecorder()
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", recorder)
+    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_isolated", recorder)
     return recorder
 
 

@@ -513,7 +513,9 @@ export const resolveProgressPercent = (progress?: ProgressInfo): number => {
   const current = progress?.current ?? 0;
   const total = progress?.total ?? 0;
   if (!current || !total) return 0;
-  return Math.round((current / total) * 100);
+  // Keep sub-one-percent progress measurable. Rounding 45/20,203 to zero made
+  // a live, reattached indexing run look as if it had not started.
+  return (current / total) * 100;
 };
 
 export function validateFiles(

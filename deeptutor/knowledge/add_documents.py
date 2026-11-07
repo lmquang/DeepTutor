@@ -37,6 +37,8 @@ from deeptutor.services.setup.data_volume import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_DIR = "./data/knowledge_bases"
+LLAMAINDEX_BATCH_MAX_FILES = 64
+LLAMAINDEX_BATCH_MAX_BYTES = 4 * 1024 * 1024
 
 if TYPE_CHECKING:
     from deeptutor.knowledge.manager import KnowledgeBaseManager
@@ -362,6 +364,9 @@ class DocumentAdder:
         if self.rag_provider == LIGHTRAG_PROVIDER:
             return await self._process_lightrag_batch(new_files)
 
+        if self.rag_provider == DEFAULT_PROVIDER:
+            return await self._process_llamaindex_batches(new_files)
+
         rag_service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
         processed_files: list[Path] = []
         failures: list[DocumentIndexFailure] = []
@@ -421,6 +426,123 @@ class DocumentAdder:
                 failures.append(DocumentIndexFailure(doc_file, str(e)))
 
         return DocumentIndexResult(processed_files=processed_files, failures=failures)
+
+    @staticmethod
+    def _llamaindex_batches(
+        files: List[Path], sizes: dict[Path, int] | None = None
+    ) -> list[list[Path]]:
+        """Bound incremental publications by both source count and source bytes.
+
+        A file larger than the byte limit is deliberately emitted alone.
+        """
+        batches: list[list[Path]] = []
+        batch: list[Path] = []
+        batch_bytes = 0
+        for path in files:
+            size = sizes[path] if sizes is not None else path.stat().st_size
+            if batch and (
+                len(batch) >= LLAMAINDEX_BATCH_MAX_FILES
+                or batch_bytes + size > LLAMAINDEX_BATCH_MAX_BYTES
+            ):
+                batches.append(batch)
+                batch = []
+                batch_bytes = 0
+            batch.append(path)
+            batch_bytes += size
+            if size > LLAMAINDEX_BATCH_MAX_BYTES:
+                batches.append(batch)
+                batch = []
+                batch_bytes = 0
+        if batch:
+            batches.append(batch)
+        return batches
+
+    async def _process_llamaindex_batches(self, files: List[Path]) -> DocumentIndexResult:
+        """Index LlamaIndex sources in bounded batches with receipt attribution."""
+        from deeptutor.knowledge.progress_tracker import ProgressStage
+
+        service = RAGService(kb_base_dir=str(self.base_dir), provider=self.rag_provider)
+        processed: list[Path] = []
+        failures: list[DocumentIndexFailure] = []
+        total = len(files)
+        sizes: dict[Path, int] = {}
+        for path in files:
+            try:
+                sizes[path] = path.stat().st_size
+            except PermissionError as exc:
+                raise DataVolumePermissionError(
+                    format_data_volume_permission_error(self.kb_dir, cause=exc)
+                ) from exc
+            except OSError as exc:
+                failures.append(DocumentIndexFailure(path, str(exc)))
+
+        for batch_number, batch in enumerate(self._llamaindex_batches(list(sizes), sizes), 1):
+            requested = {str(path.resolve()): path for path in batch}
+            confirmed: set[str] = set()
+
+            def remember_indexed(paths: list[str]) -> None:
+                for path in paths:
+                    canonical = str(Path(path).resolve())
+                    if canonical in requested:
+                        confirmed.add(canonical)
+
+            if self.progress_tracker is not None:
+                self.progress_tracker.update(
+                    ProgressStage.PROCESSING_FILE,
+                    message_key="Indexing batch {{current}} ({{count}} files)",
+                    message_params={"current": batch_number, "count": len(batch)},
+                    current=len(processed) + len(failures),
+                    total=total,
+                )
+
+            error: str | None = None
+            try:
+                success = await service.add_documents(
+                    self.kb_name,
+                    [str(path) for path in batch],
+                    indexed_file_callback=remember_indexed,
+                )
+                if not success:
+                    error = "Provider returned failure without details."
+            except PermissionError as exc:
+                raise DataVolumePermissionError(
+                    format_data_volume_permission_error(self.kb_dir, cause=exc)
+                ) from exc
+            except Exception as exc:
+                logger.exception("Failed LlamaIndex batch %d: %s", batch_number, exc)
+                error = str(exc)
+
+            # A receipt is authoritative even if later batch finalization failed:
+            # retrying the whole batch could duplicate an already-published file.
+            batch_processed = [path for path in batch if str(path.resolve()) in confirmed]
+            processed.extend(batch_processed)
+            unconfirmed = [path for path in batch if str(path.resolve()) not in confirmed]
+            failure_error = error or "Provider did not confirm this source was indexed."
+            failures.extend(DocumentIndexFailure(path, failure_error) for path in unconfirmed)
+
+            for path in batch_processed:
+                try:
+                    await asyncio.to_thread(self._record_successful_hash, path)
+                except Exception:
+                    # The receipt is emitted only after publication. Do not turn
+                    # a published document into a retry candidate merely because
+                    # duplicate-detection bookkeeping failed.
+                    logger.warning(
+                        "Indexed document hash could not be recorded: %s",
+                        path.name,
+                        exc_info=True,
+                    )
+
+            if self.progress_tracker is not None:
+                self.progress_tracker.update(
+                    ProgressStage.PROCESSING_FILE,
+                    message_key="Indexed {{count}} confirmed file(s)",
+                    message_params={"count": len(batch_processed)},
+                    current=len(processed) + len(failures),
+                    total=total,
+                )
+
+        return DocumentIndexResult(processed, failures)
 
     async def _process_lightrag_batch(self, files: List[Path]) -> DocumentIndexResult:
         """Hold native write ownership across the entire accepted batch."""

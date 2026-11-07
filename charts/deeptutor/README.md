@@ -13,6 +13,35 @@ It references the namespace-local `registry-credentials` image pull Secret
 Tailscale uses `spec.tls.hosts` for the requested device name; see the
 [operator documentation](https://tailscale.com/docs/kubernetes-operator/ingress/expose-workload-to-tailnet-l7).
 
+## Indexing isolation
+
+`indexing.backend` defaults to `subprocess`. Set it to `kubernetes` to run API
+uploads, linked-folder sync, initial indexing, and reindex in short-lived Jobs.
+The API then receives a narrowly scoped service-account token which can only
+create, get, and delete `batch/jobs` in its namespace. Worker pods do not mount
+a token. The full Job JSON is mounted at `/etc/deeptutor/indexing-job.json`.
+Jobs use the release image, pull secrets, data PVC, GitHub Secret environment,
+workspace roots and timezone; they have `backoffLimit: 0` and dedicated
+resources (`indexing.resources`, default 1 CPU/1 Gi request and 2 CPU/4 Gi
+limit). `indexing.maxIsolatedWorkers` defaults to one.
+
+`indexing.timeoutSeconds` defaults to 21600 (six hours). With the subprocess
+backend, children share the API pod's limits. With Kubernetes Jobs, required
+same-node pod affinity keeps each worker beside the API because a local-path
+RWO volume cannot be mounted across nodes. This provides CPU/memory isolation,
+not disk or trust isolation: API and worker share the PVC, including private
+directories and trusted pickle data. Ensure the API node has capacity for both.
+Running Jobs are not managed by a newly rolled-out API revision and may retain
+the previous image/template until completion; coordinate upgrades accordingly.
+Failed-run IPC request files under the indexing job root may contain sensitive
+inputs, including repository credentials or keys. Clean them up manually only
+after confirming the corresponding worker is no longer running.
+Keep one backend worker and one replica.
+
+An optional `githubSecret` references an existing Secret with the key
+`GITHUB_TOKEN`; no token value belongs in Helm values. The cluster override
+references `deeptutor-github`, preserving authentication on future upgrades.
+
 ## Build
 
 Run from the checkout root. The existing Dockerfile bundles Web/API and includes

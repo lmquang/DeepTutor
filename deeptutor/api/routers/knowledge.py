@@ -38,6 +38,11 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 from pydantic import BaseModel, Field
 
 from deeptutor.api.routers.auth import require_admin
+from deeptutor.api.utils.indexing_worker import (
+    run_initialization_isolated,
+    run_reindex_isolated,
+    run_upload_processing_isolated,
+)
 from deeptutor.api.utils.progress_broadcaster import ProgressBroadcaster
 from deeptutor.api.utils.task_id_manager import TaskIDManager
 from deeptutor.api.utils.task_log_stream import capture_task_logs, get_task_stream_manager
@@ -2999,6 +3004,10 @@ async def list_knowledge_bases_proxy_alias():
 @router.get("/knowledge-bases/{kb_name}")
 async def get_knowledge_base_details(kb_name: str):
     """Get detailed info for a specific KB."""
+    return await asyncio.to_thread(_get_knowledge_base_details_sync, kb_name)
+
+
+def _get_knowledge_base_details_sync(kb_name: str):
     try:
         resource = resolve_kb(kb_name)
         manager = manager_for_resource(resource)
@@ -3091,6 +3100,10 @@ async def list_kb_raw_files(kb_name: str):
     before it holds any files. Folders are purely organizational and have no
     effect on indexing or retrieval.
     """
+    return await asyncio.to_thread(_list_kb_raw_files_sync, kb_name)
+
+
+def _list_kb_raw_files_sync(kb_name: str):
     raw_dir = _resolve_kb_raw_dir(kb_name, allow_unsupported=True)
     if raw_dir is None:
         return {"files": []}
@@ -3485,7 +3498,7 @@ async def upload_files(
         )
 
         background_tasks.add_task(
-            run_upload_processing_task,
+            run_upload_processing_isolated,
             accepted_indexing_snapshot=accepted_snapshot,
             kb_name=kb_name,
             base_dir=str(kb_base_dir),
@@ -3779,7 +3792,7 @@ async def _create_knowledge_base_owned(
         from deeptutor.services.workspace.context import current_workspace_id
 
         background_tasks.add_task(
-            run_initialization_task,
+            run_initialization_isolated,
             initializer,
             task_id,
             storage_workspace_id=current_workspace_id(),
@@ -4089,6 +4102,10 @@ async def run_reindex_task(
 @router.get("/knowledge-bases/{kb_name}/reindex-config")
 async def get_reindex_config(kb_name: str, embedding_model: str = "") -> dict[str, Any]:
     """Read selected embedding and current role defaults for rebuild confirmation."""
+    return await asyncio.to_thread(_get_reindex_config_sync, kb_name, embedding_model)
+
+
+def _get_reindex_config_sync(kb_name: str, embedding_model: str = "") -> dict[str, Any]:
     manager, kb_name, _ = _writable_kb(kb_name)
     entry = _load_kb_entry_or_404(manager, kb_name)
     _assert_not_connected_kb(kb_name, entry)
@@ -4253,7 +4270,7 @@ async def reindex_knowledge_base(
         )
 
         background_tasks.add_task(
-            run_reindex_task,
+            run_reindex_isolated,
             kb_name=kb_name,
             base_dir=str(kb_base_dir),
             task_id=task_id,
@@ -4333,6 +4350,10 @@ async def retry_knowledge_base(
 @router.get("/knowledge-bases/{kb_name}/indexing-run")
 async def get_indexing_run(kb_name: str):
     """Pure durable diagnostics; reading never recreates a task or retries work."""
+    return await asyncio.to_thread(_get_indexing_run_sync, kb_name)
+
+
+def _get_indexing_run_sync(kb_name: str):
     from deeptutor.knowledge.indexing_run import visible_run
 
     resource = resolve_kb(kb_name)
@@ -4354,6 +4375,10 @@ async def cancel_indexing_run(kb_name: str, task_id: str):
 
 @router.get("/knowledge-bases/{kb_name}/indexing-readiness")
 async def get_indexing_readiness(kb_name: str):
+    return await asyncio.to_thread(_get_indexing_readiness_sync, kb_name)
+
+
+def _get_indexing_readiness_sync(kb_name: str):
     from deeptutor.services.embedding.config import get_embedding_config
     from deeptutor.services.parsing import get_parse_service
     from deeptutor.services.parsing.engines.factory import get_parser
@@ -4386,6 +4411,10 @@ async def get_indexing_readiness(kb_name: str):
 @router.get("/knowledge-bases/{kb_name}/progress")
 async def get_progress(kb_name: str):
     """Get initialization progress for a knowledge base"""
+    return await asyncio.to_thread(_get_progress_sync, kb_name)
+
+
+def _get_progress_sync(kb_name: str):
     try:
         resource = resolve_kb(kb_name)
         progress_tracker = ProgressTracker(resource.name, resource.base_dir)
@@ -4749,6 +4778,10 @@ async def link_folder(kb_name: str, request: LinkFolderRequest):
 @router.get("/knowledge-bases/{kb_name}/linked-folders", response_model=list[LinkedFolderInfo])
 async def get_linked_folders(kb_name: str):
     """Get list of linked folders for a knowledge base."""
+    return await asyncio.to_thread(_get_linked_folders_sync, kb_name)
+
+
+def _get_linked_folders_sync(kb_name: str):
     try:
         resource = resolve_kb(kb_name)
         manager = manager_for_resource(resource)
@@ -4848,7 +4881,7 @@ async def sync_folder(kb_name: str, folder_id: str, background_tasks: Background
         # Add background task to process files
         accepted_snapshot = _freeze_append_indexing(kb_name, kb_base_dir, kb_provider)
         background_tasks.add_task(
-            run_upload_processing_task,
+            run_upload_processing_isolated,
             accepted_indexing_snapshot=accepted_snapshot,
             kb_name=kb_name,
             base_dir=str(kb_base_dir),
@@ -4984,6 +5017,10 @@ async def add_github_source(kb_name: str, request: AddGitHubSourceRequest):
 
 @router.get("/knowledge-bases/{kb_name}/github-sources", response_model=list[GitHubSourceInfo])
 async def get_github_sources(kb_name: str):
+    return await asyncio.to_thread(_get_github_sources_sync, kb_name)
+
+
+def _get_github_sources_sync(kb_name: str):
     with _knowledge_source_errors(kb_name):
         manager, resolved_name, _ = _writable_kb(kb_name)
         return [GitHubSourceInfo(**s) for s in manager.get_github_sources(resolved_name)]
@@ -5041,6 +5078,10 @@ async def add_web_source(kb_name: str, request: AddWebSourceRequest):
 
 @router.get("/knowledge-bases/{kb_name}/web-sources", response_model=list[WebSourceInfo])
 async def get_web_sources(kb_name: str):
+    return await asyncio.to_thread(_get_web_sources_sync, kb_name)
+
+
+def _get_web_sources_sync(kb_name: str):
     with _knowledge_source_errors(kb_name):
         manager, resolved_name, _ = _writable_kb(kb_name)
         return [WebSourceInfo(**s) for s in manager.get_web_sources(resolved_name)]

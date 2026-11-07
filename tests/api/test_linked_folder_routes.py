@@ -182,7 +182,7 @@ def test_queued_sync_returns_counts_and_task_id(
     async def _noop_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_task)
+    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_isolated", _noop_task)
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/kb/sync-folder/folder-1")

@@ -28,6 +28,12 @@ export default function KbTaskLogs({
     0,
     Math.min(100, resolveProgressPercent(kb.progress)),
   );
+  const current = kb.progress?.current;
+  const total = kb.progress?.total;
+  const hasCounts =
+    typeof current === "number" && typeof total === "number" && total > 0;
+  const percentLabel =
+    percent > 0 && percent < 1 ? "<1%" : `${Math.round(percent)}%`;
 
   return (
     <section
@@ -52,11 +58,12 @@ export default function KbTaskLogs({
           >
             <div
               className="h-full rounded-full bg-[var(--primary)] transition-all duration-300"
-              style={{ width: `${Math.max(percent, 4)}%` }}
+              style={{ width: `${percent}%` }}
             />
           </div>
           <span className="text-[11px] text-[var(--muted-foreground)]">
-            {t("Current phase")}: {percent}%
+            {t("Current phase")}: {percentLabel}
+            {hasCounts ? ` (${current}/${total})` : ""}
           </span>
         </div>
       )}

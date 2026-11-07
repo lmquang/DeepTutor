@@ -788,7 +788,7 @@ def test_create_kb_does_not_require_llm_precheck(monkeypatch, tmp_path: Path) ->
     async def _noop_init_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_isolated", _noop_init_task)
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
 
     with TestClient(_build_app()) as client:
@@ -814,7 +814,7 @@ def test_create_coerces_legacy_provider_to_llamaindex(monkeypatch, tmp_path: Pat
     async def _noop_init_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_isolated", _noop_init_task)
     monkeypatch.setattr(knowledge_router_module, "_kb_base_dir", tmp_path / "knowledge_bases")
 
     with TestClient(_build_app()) as client:
@@ -840,7 +840,7 @@ def test_create_preserves_known_nondefault_provider(monkeypatch, tmp_path: Path)
     async def _noop_init_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_isolated", _noop_init_task)
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -896,7 +896,7 @@ def test_create_normalizes_uploaded_extension_to_lowercase(monkeypatch, tmp_path
     async def _noop_init_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_isolated", _noop_init_task)
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -990,7 +990,9 @@ def test_upload_ready_kb_returns_task_id(monkeypatch, tmp_path: Path) -> None:
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/ready-kb/upload", files=_upload_payload())
@@ -1016,7 +1018,9 @@ def test_upload_flips_ready_kb_to_processing_before_dispatch(monkeypatch, tmp_pa
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/ready-kb/upload", files=_upload_payload())
@@ -1113,7 +1117,8 @@ def test_upload_task_bootstraps_empty_llamaindex_kb(monkeypatch, tmp_path: Path)
         def __init__(self, *_args, **_kwargs) -> None:
             pass
 
-        async def add_documents(self, *_args, **_kwargs) -> bool:
+        async def add_documents(self, _kb_name, paths, **kwargs) -> bool:
+            kwargs["indexed_file_callback"](paths)
             return True
 
     monkeypatch.setattr(
@@ -1420,7 +1425,9 @@ def test_upload_preserves_folder_structure(monkeypatch, tmp_path: Path) -> None:
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -1441,7 +1448,9 @@ def test_upload_allows_same_filename_in_different_folders(monkeypatch, tmp_path:
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -1469,7 +1478,9 @@ def test_upload_places_a_batch_under_dest_subdir(monkeypatch, tmp_path: Path) ->
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -1497,7 +1508,9 @@ def test_upload_dest_subdir_refuses_traversal(monkeypatch, tmp_path: Path) -> No
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -1519,7 +1532,9 @@ def test_upload_without_dest_subdir_is_unchanged(monkeypatch, tmp_path: Path) ->
     async def _noop_upload_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_upload_processing_task", _noop_upload_task)
+    monkeypatch.setattr(
+        knowledge_router_module, "run_upload_processing_isolated", _noop_upload_task
+    )
 
     with TestClient(_build_app()) as client:
         response = client.post(
@@ -1652,7 +1667,7 @@ def test_reindex_accepts_default_alias(monkeypatch, tmp_path: Path) -> None:
     async def _noop_reindex_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
+    monkeypatch.setattr(knowledge_router_module, "run_reindex_isolated", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/default/reindex")
@@ -1692,7 +1707,7 @@ def test_reindex_error_status_bypasses_existing_match_noop(monkeypatch, tmp_path
     async def _noop_reindex_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
+    monkeypatch.setattr(knowledge_router_module, "run_reindex_isolated", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/failed-kb/reindex")
@@ -2107,7 +2122,7 @@ def test_retry_error_status_queues_reindex(monkeypatch, tmp_path: Path) -> None:
     async def _noop_reindex_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
+    monkeypatch.setattr(knowledge_router_module, "run_reindex_isolated", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/failed-kb/retry")
@@ -2172,7 +2187,7 @@ def test_reindex_bypasses_existing_match_when_vectors_are_invalid(
     async def _noop_reindex_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", _noop_reindex_task)
+    monkeypatch.setattr(knowledge_router_module, "run_reindex_isolated", _noop_reindex_task)
 
     with TestClient(_build_app()) as client:
         response = client.post("/api/knowledge-bases/bad-index-kb/reindex")
@@ -2530,7 +2545,7 @@ def test_create_pageindex_oss_persists_optional_mode(monkeypatch, tmp_path: Path
     async def _noop_init_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_isolated", _noop_init_task)
     with TestClient(_build_app()) as client:
         response = client.post(
             "/api/knowledge-bases",
@@ -2579,7 +2594,7 @@ def test_create_mode_aware_kb_persists_per_kb_search_mode(monkeypatch, tmp_path:
     async def _noop_init_task(*_args, **_kwargs):
         return None
 
-    monkeypatch.setattr(knowledge_router_module, "run_initialization_task", _noop_init_task)
+    monkeypatch.setattr(knowledge_router_module, "run_initialization_isolated", _noop_init_task)
     with TestClient(_build_app()) as client:
         response = client.post(
             "/api/knowledge-bases",
@@ -2757,7 +2772,7 @@ def test_reindex_passes_frozen_lightrag_snapshot_to_background_task(
         "_freeze_default_indexing_llm",
         lambda: snapshot,
     )
-    monkeypatch.setattr(knowledge_router_module, "run_reindex_task", capture_task)
+    monkeypatch.setattr(knowledge_router_module, "run_reindex_isolated", capture_task)
     monkeypatch.setattr(
         "deeptutor.services.rag.pipelines.lightrag.indexing_policy.public_rebuild_config",
         lambda accepted, selection=None: (
@@ -2814,7 +2829,8 @@ def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
         def __init__(self, *_args, **_kwargs) -> None:
             pass
 
-        async def add_documents(self, *_args, **_kwargs) -> bool:
+        async def add_documents(self, _kb_name, paths, **kwargs) -> bool:
+            kwargs["indexed_file_callback"](paths)
             return True
 
     monkeypatch.setattr(
@@ -2859,8 +2875,8 @@ def test_upload_progress_counts_completed_files_and_reports_reliable_stages(
     assert updates == [
         ("Validating 1 file(s)...", 0, 1),
         ("Staged 1 new file(s)", 0, 1),
-        ("Indexing ok.txt", 0, 1),
-        ("Indexed ok.txt", 1, 1),
+        ("Indexing batch 1 (1 files)", 0, 1),
+        ("Indexed 1 confirmed file(s)", 1, 1),
         ("Saving metadata...", 1, 1),
         ("Successfully processed 1 files!", 1, 1),
     ]
@@ -3259,6 +3275,7 @@ def test_create_empty_llamaindex_kb_then_upload_and_retry(
             (version / "meta.json").write_text(
                 json.dumps({"provider": "llamaindex", "version": "version-1"})
             )
+            _kwargs["indexed_file_callback"](files)
             return True
 
     monkeypatch.setattr("deeptutor.knowledge.add_documents.RAGService", Rag)

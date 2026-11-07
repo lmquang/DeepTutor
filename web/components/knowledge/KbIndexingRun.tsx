@@ -27,7 +27,7 @@ export default function KbIndexingRun({ kbName, readOnly = false }: { kbName: st
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<{ key: string; run: Run | null }>();
-  const [error, setError] = useState<{ key: string; taskId?: string }>();
+  const [error, setError] = useState<{ key: string; taskId?: string; timeout?: boolean }>();
   const [now, setNow] = useState(Date.now() / 1000);
   const [cancelling, setCancelling] = useState<string>();
   const run = snapshot?.key === kbName ? snapshot.run : undefined;
@@ -37,8 +37,12 @@ export default function KbIndexingRun({ kbName, readOnly = false }: { kbName: st
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
+      const requestController = new AbortController();
+      const timeout = setTimeout(() => requestController.abort(), 10000);
+      const abort = () => requestController.abort();
+      controller.signal.addEventListener("abort", abort, { once: true });
       try {
-        const response = await apiFetch(`/api/knowledge-bases/${encodeURIComponent(kbName)}/indexing-run`, { signal: controller.signal, cache: "no-store" });
+        const response = await apiFetch(`/api/knowledge-bases/${encodeURIComponent(kbName)}/indexing-run`, { signal: requestController.signal, cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
         const data = await response.json() as { run: Run | null };
         if (!controller.signal.aborted) {
@@ -52,7 +56,11 @@ export default function KbIndexingRun({ kbName, readOnly = false }: { kbName: st
           setError(undefined);
           setNow(Date.now() / 1000);
         }
-      } catch { if (!controller.signal.aborted) setError({ key: kbName }); }
+      } catch { if (!controller.signal.aborted) setError({ key: kbName, timeout: requestController.signal.aborted }); }
+      finally {
+        clearTimeout(timeout);
+        controller.signal.removeEventListener("abort", abort);
+      }
       if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 3000);
     };
     void poll();
@@ -73,7 +81,7 @@ export default function KbIndexingRun({ kbName, readOnly = false }: { kbName: st
   return <details open={open} className="shrink-0 border-b border-[var(--border)] px-6 py-2 text-xs">
     <summary className="cursor-pointer" onClick={(event) => { event.preventDefault(); setOpen((value) => !value); }}>{t("Indexing recovery details")}</summary>
     {open && <div className="max-h-56 space-y-2 overflow-auto py-2">
-      {error?.key === kbName && (!error.taskId || error.taskId === run?.task_id) && <p role="alert">{t("Could not read indexing state. Refresh and retry.")}</p>}
+      {error?.key === kbName && (!error.taskId || error.taskId === run?.task_id) && <p role="alert">{error.timeout ? t("Indexing state request timed out. Displayed state may be stale.") : t("Could not read indexing state. Refresh and retry.")}</p>}
       {run ? <>
         <p>{t("Run state")}: {t(`indexingState.${run.state}`, { defaultValue: run.state })} · {t("Current phase")}: {t(`indexingPhase.${run.phase}`, { defaultValue: run.phase })}</p>
         <p>{t("Runtime")}: {Math.max(0, Math.floor((run.finished_at || now) - run.started_at))}s · {t("Since activity")}: {Math.max(0, Math.floor(now - run.last_activity_at))}s · {t("Since measurable progress")}: {Math.max(0, Math.floor(now - run.last_progress_at))}s</p>

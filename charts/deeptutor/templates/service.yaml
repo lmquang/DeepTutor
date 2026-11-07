@@ -7,6 +7,7 @@ spec:
   selector:
     app.kubernetes.io/name: deeptutor
     app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api
   ports:
     - name: http
       port: 80

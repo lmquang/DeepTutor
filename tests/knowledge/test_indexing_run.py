@@ -91,6 +91,16 @@ def test_restart_projection_is_read_only_and_retains_completed_sources(tmp_path)
     assert path.read_bytes() == original
 
 
+def test_worker_in_other_pid_namespace_remains_visible_while_lease_held(tmp_path):
+    with IndexingRun(tmp_path, [], task_id="pod-worker") as run:
+        path = tmp_path / ".indexing-run.json"
+        data = json.loads(path.read_text())
+        data["pid"] = 999999999  # Not visible in the API pod's PID namespace.
+        path.write_text(json.dumps(data))
+        assert visible_run(tmp_path)["state"] == "running"
+        run.finish("completed")
+
+
 def test_changed_source_cannot_be_published(tmp_path):
     source = tmp_path / "raw" / "book.txt"
     source.parent.mkdir()

@@ -19,8 +19,14 @@ spec:
       labels:
         app.kubernetes.io/name: deeptutor
         app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: api
     spec:
+      {{- if eq .Values.indexing.backend "kubernetes" }}
+      serviceAccountName: {{ .Release.Name }}-indexing
+      automountServiceAccountToken: true
+      {{- else }}
       automountServiceAccountToken: false
+      {{- end }}
       terminationGracePeriodSeconds: 60
       securityContext:
         runAsNonRoot: true
@@ -86,6 +92,27 @@ spec:
               value: /app/data/user/workspace
             - name: TZ
               value: Asia/Ho_Chi_Minh
+            - name: DEEPTUTOR_INDEXING_TIMEOUT_SECONDS
+              value: {{ .Values.indexing.timeoutSeconds | quote }}
+            - name: DEEPTUTOR_INDEXING_BACKEND
+              value: {{ .Values.indexing.backend | quote }}
+            - name: DEEPTUTOR_INDEXING_JOB_TEMPLATE_PATH
+              value: /etc/deeptutor/indexing-job.json
+            - name: DEEPTUTOR_INDEXING_JOB_ROOT
+              value: /app/data/indexing-jobs
+            - name: DEEPTUTOR_INDEXING_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DEEPTUTOR_ISOLATED_WORKERS
+              value: {{ .Values.indexing.maxIsolatedWorkers | quote }}
+            {{- if .Values.githubSecret }}
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.githubSecret | quote }}
+                  key: GITHUB_TOKEN
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.config.system.frontend_port }}
@@ -96,6 +123,7 @@ spec:
               path: /health/ready
               port: backend
             periodSeconds: 5
+            timeoutSeconds: 5
             failureThreshold: 60
           readinessProbe:
             exec:
@@ -110,13 +138,17 @@ spec:
               path: /health/live
               port: backend
             periodSeconds: 20
-            timeoutSeconds: 5
-            failureThreshold: 3
+            timeoutSeconds: 10
+            failureThreshold: 15
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /app/data
+            - name: indexing-job-template
+              mountPath: /etc/deeptutor/indexing-job.json
+              subPath: indexing-job.json
+              readOnly: true
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -130,3 +162,6 @@ spec:
               - secret:
                   name: {{ .Values.bootstrapSecret | quote }}
               {{- end }}
+        - name: indexing-job-template
+          configMap:
+            name: {{ .Release.Name }}-config

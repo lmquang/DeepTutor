@@ -7,3 +7,18 @@ data:
     {{- .Values.config.system | toPrettyJson | nindent 4 }}
   interface.json: |
     {{- .Values.config.interface | toPrettyJson | nindent 4 }}
+  indexing-job.json: |
+    {{- $labels := dict "app.kubernetes.io/component" "indexing-worker" "app.kubernetes.io/instance" .Release.Name -}}
+    {{- $containerSecurity := dict "allowPrivilegeEscalation" false "capabilities" (dict "drop" (list "ALL")) -}}
+    {{- $env := list (dict "name" "DEEPTUTOR_HOME" "value" "/app") (dict "name" "DEEPTUTOR_WORKSPACE_ROOT" "value" "/app/data/user/workspace") (dict "name" "DEEPTUTOR_WORKSPACE_ALLOWED_ROOTS" "value" "/app/data/user/workspace") (dict "name" "DEEPTUTOR_INDEXING_JOB_ROOT" "value" "/app/data/indexing-jobs") (dict "name" "DEEPTUTOR_INDEXING_TIMEOUT_SECONDS" "value" (.Values.indexing.timeoutSeconds | toString)) (dict "name" "TZ" "value" "Asia/Ho_Chi_Minh") -}}
+    {{- if .Values.githubSecret -}}
+    {{- $env = append $env (dict "name" "GITHUB_TOKEN" "valueFrom" (dict "secretKeyRef" (dict "name" .Values.githubSecret "key" "GITHUB_TOKEN"))) -}}
+    {{- end -}}
+    {{- $container := dict "name" "indexing" "image" (printf "%s:%s" .Values.image.repository .Values.image.tag) "imagePullPolicy" .Values.image.pullPolicy "command" (list "python" "-m" "deeptutor.runtime.worker_process") "args" (list) "env" $env "resources" .Values.indexing.resources "securityContext" $containerSecurity "volumeMounts" (list (dict "name" "data" "mountPath" "/app/data")) -}}
+    {{- $podSecurity := dict "runAsNonRoot" true "runAsUser" 1000 "runAsGroup" 1000 "fsGroup" 1000 "fsGroupChangePolicy" "OnRootMismatch" "seccompProfile" (dict "type" "RuntimeDefault") -}}
+    {{- $affinity := dict "podAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list (dict "labelSelector" (dict "matchLabels" (dict "app.kubernetes.io/instance" .Release.Name "app.kubernetes.io/component" "api")) "topologyKey" "kubernetes.io/hostname"))) -}}
+    {{- $podSpec := dict "restartPolicy" "Never" "automountServiceAccountToken" false "serviceAccountName" (printf "%s-indexing" .Release.Name) "securityContext" $podSecurity "affinity" $affinity "containers" (list $container) "volumes" (list (dict "name" "data" "persistentVolumeClaim" (dict "claimName" (printf "%s-data" .Release.Name)))) -}}
+    {{- with .Values.imagePullSecrets }}{{- $_ := set $podSpec "imagePullSecrets" . -}}{{- end -}}
+    {{- with .Values.nodeSelector }}{{- $_ := set $podSpec "nodeSelector" . -}}{{- end -}}
+    {{- with .Values.tolerations }}{{- $_ := set $podSpec "tolerations" . -}}{{- end -}}
+    {{- dict "apiVersion" "batch/v1" "kind" "Job" "metadata" (dict "generateName" (printf "%s-indexing-" .Release.Name) "labels" $labels) "spec" (dict "backoffLimit" 0 "template" (dict "metadata" (dict "labels" $labels) "spec" $podSpec)) | toJson | nindent 4 }}

@@ -972,7 +972,7 @@ def test_rebuild_confirmation_rejects_changed_defaults_without_queueing(
     async def task(**kwargs):
         captured.append(kwargs["indexing_snapshot"])
 
-    monkeypatch.setattr(knowledge, "run_reindex_task", task)
+    monkeypatch.setattr(knowledge, "run_reindex_isolated", task)
     app = FastAPI()
     app.include_router(knowledge.router, prefix="/api")
     with TestClient(app) as client:
@@ -1037,7 +1037,7 @@ def test_rebuild_confirmation_preserves_binding_and_freezes_explicit_selection(
         role_environment["embedding"].model = "later-global"
         captured.append(kwargs)
 
-    monkeypatch.setattr(knowledge, "run_reindex_task", task)
+    monkeypatch.setattr(knowledge, "run_reindex_isolated", task)
     app = FastAPI()
     app.include_router(knowledge.router, prefix="/api")
     with TestClient(app) as client:
